@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Orders - Protein Store</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="logo">Protein Store</a>
+  <div>
+    <a href="index.html">Home</a>
+    <a href="products.html">Products</a>
+    <a href="customers.html">Customers</a>
+    <a href="orders.html">Orders</a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="top-bar">
+    <h1>Orders</h1>
+    <button class="btn-blue" onclick="openAdd()">+ New Order</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Customer</th>
+        <th>Product</th>
+        <th>Qty</th>
+        <th>Total</th>
+        <th>Date</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="orders-body">
+      <tr><td colspan="8">Loading...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- New Order Modal -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">&#x2715;</button>
+    <h2>New Order</h2>
+
+    <label>Customer</label>
+    <select id="f-customer"></select>
+
+    <label>Product</label>
+    <select id="f-product" onchange="calcTotal()"></select>
+
+    <div class="form-row">
+      <div>
+        <label>Quantity</label>
+        <input type="number" id="f-qty" value="1" min="1" oninput="calcTotal()">
+      </div>
+      <div>
+        <label>Total (€)</label>
+        <input type="number" id="f-total" step="0.01">
+      </div>
+    </div>
+
+    <label>Status</label>
+    <select id="f-status">
+      <option value="Pending">Pending</option>
+      <option value="Shipped">Shipped</option>
+      <option value="Delivered">Delivered</option>
+      <option value="Cancelled">Cancelled</option>
+    </select>
+
+    <br><br>
+    <button class="btn-blue" onclick="saveOrder()">Place Order</button>
+    &nbsp;
+    <button class="btn-grey" onclick="closeModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- Update Status Modal -->
+<div class="modal-bg" id="status-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeStatus()">&#x2715;</button>
+    <h2>Update Order Status</h2>
+    <p id="status-label" style="color:#555;font-size:14px;"></p>
+
+    <label>New Status</label>
+    <select id="f-new-status">
+      <option value="Pending">Pending</option>
+      <option value="Shipped">Shipped</option>
+      <option value="Delivered">Delivered</option>
+      <option value="Cancelled">Cancelled</option>
+    </select>
+
+    <br><br>
+    <button class="btn-blue" onclick="updateStatus()">Update</button>
+    &nbsp;
+    <button class="btn-grey" onclick="closeStatus()">Cancel</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<footer>Protein Store &copy; 2026 - TU Dublin Project</footer>
+
+<script>
+  const SUPABASE_URL = 'https://yyxrtacnqnhzqzelqgkv.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5eHJ0YWNucW5oenF6ZWxxZ2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMzcyODEsImV4cCI6MjA5MjcxMzI4MX0.5LwkGXOuNQ1TSt0IRcI4hMm-VBJno1mv7rxsHipKeF4';
+
+  let customers = [];
+  let products = [];
+  let updatingId = null;
+
+  function h(extra) {
+    return { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', ...extra };
+  }
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  function formatDate(str) {
+    if (!str) return '-';
+    return new Date(str).toLocaleDateString('en-IE');
+  }
+
+  function badgeClass(s) {
+    const map = { Pending: 'badge-pending', Shipped: 'badge-shipped', Delivered: 'badge-delivered', Cancelled: 'badge-cancelled' };
+    return map[s] || 'badge-pending';
+  }
+
+  async function loadDropdowns() {
+    const cr = await fetch(`${SUPABASE_URL}/rest/v1/customers?select=*`, { headers: h() });
+    const pr = await fetch(`${SUPABASE_URL}/rest/v1/products?select=*`, { headers: h() });
+    customers = await cr.json();
+    products = await pr.json();
+
+    document.getElementById('f-customer').innerHTML = customers.map(c =>
+      `<option value="${c.customer_id}">${c.first_name} ${c.last_name}</option>`
+    ).join('');
+
+    document.getElementById('f-product').innerHTML = products.map(p =>
+      `<option value="${p.product_id}" data-price="${p.price}">${p.name} (€${p.price})</option>`
+    ).join('');
+  }
+
+  function calcTotal() {
+    const sel = document.getElementById('f-product');
+    const price = parseFloat(sel.options[sel.selectedIndex]?.dataset?.price || 0);
+    const qty = parseInt(document.getElementById('f-qty').value || 1);
+    document.getElementById('f-total').value = (price * qty).toFixed(2);
+  }
+
+  async function load() {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?select=*&order=order_id.desc`, { headers: h() });
+    const orders = await res.json();
+    const tbody = document.getElementById('orders-body');
+
+    if (!orders.length) {
+      tbody.innerHTML = '<tr><td colspan="8">No orders found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = orders.map(o => {
+      const c = customers.find(x => x.customer_id === o.customer_id);
+      const p = products.find(x => x.product_id === o.product_id);
+      return `
+        <tr>
+          <td>${o.order_id}</td>
+          <td>${c ? c.first_name + ' ' + c.last_name : '-'}</td>
+          <td>${p ? p.name : '-'}</td>
+          <td>${o.quantity}</td>
+          <td>€${parseFloat(o.total_price || 0).toFixed(2)}</td>
+          <td>${formatDate(o.order_date)}</td>
+          <td><span class="badge ${badgeClass(o.status)}">${o.status}</span></td>
+          <td>
+            <button class="btn-grey" onclick="openStatus(${o.order_id}, '${o.status}')">Status</button>
+            <button class="btn-red" onclick="del(${o.order_id})">Delete</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function openAdd() {
+    document.getElementById('f-qty').value = 1;
+    document.getElementById('f-status').value = 'Pending';
+    calcTotal();
+    document.getElementById('modal').classList.add('open');
+  }
+
+  function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+  function openStatus(id, current) {
+    updatingId = id;
+    document.getElementById('status-label').textContent = `Updating order #${id}`;
+    document.getElementById('f-new-status').value = current;
+    document.getElementById('status-modal').classList.add('open');
+  }
+
+  function closeStatus() { document.getElementById('status-modal').classList.remove('open'); }
+
+  async function saveOrder() {
+    const body = {
+      customer_id: parseInt(document.getElementById('f-customer').value),
+      product_id: parseInt(document.getElementById('f-product').value),
+      quantity: parseInt(document.getElementById('f-qty').value),
+      total_price: parseFloat(document.getElementById('f-total').value),
+      status: document.getElementById('f-status').value
+    };
+    await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
+      method: 'POST', headers: h({ 'Prefer': 'return=minimal' }), body: JSON.stringify(body)
+    });
+    toast('Order placed');
+    closeModal();
+    load();
+  }
+
+  async function updateStatus() {
+    const status = document.getElementById('f-new-status').value;
+    await fetch(`${SUPABASE_URL}/rest/v1/orders?order_id=eq.${updatingId}`, {
+      method: 'PATCH', headers: h({ 'Prefer': 'return=minimal' }), body: JSON.stringify({ status })
+    });
+    toast('Status updated');
+    closeStatus();
+    load();
+  }
+
+  async function del(id) {
+    if (!confirm('Are you sure you want to delete this order?')) return;
+    await fetch(`${SUPABASE_URL}/rest/v1/orders?order_id=eq.${id}`, { method: 'DELETE', headers: h() });
+    toast('Order deleted');
+    load();
+  }
+
+  async function init() {
+    await loadDropdowns();
+    await load();
+  }
+
+  init();
+</script>
+
+</body>
+</html>
