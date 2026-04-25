@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Protein Store - Home</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="logo">Protein Store</a>
+  <div>
+    <a href="index.html">Home</a>
+    <a href="products.html">Products</a>
+    <a href="customers.html">Customers</a>
+    <a href="orders.html">Orders</a>
+  </div>
+</nav>
+
+<div class="container">
+  <h1>Welcome to Protein Store</h1>
+  <p>Your online store for whey protein, protein bars and shakers.</p>
+
+  <br>
+
+  <table style="width:400px;">
+    <thead>
+      <tr>
+        <th>Stat</th>
+        <th>Count</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Total Products</td>
+        <td id="stat-products">Loading...</td>
+      </tr>
+      <tr>
+        <td>Total Customers</td>
+        <td id="stat-customers">Loading...</td>
+      </tr>
+      <tr>
+        <td>Total Orders</td>
+        <td id="stat-orders">Loading...</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <br>
+
+  <h2>Categories</h2>
+  <p><a href="products.html">🥛 Whey Protein</a> &nbsp;|&nbsp; <a href="products.html">🍫 Protein Bars</a> &nbsp;|&nbsp; <a href="products.html">🧴 Shakers</a></p>
+</div>
+
+<footer>
+  Protein Store &copy; 2026 - TU Dublin Project
+</footer>
+
+<script>
+  const SUPABASE_URL = 'https://yyxrtacnqnhzqzelqgkv.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5eHJ0YWNucW5oenF6ZWxxZ2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMzcyODEsImV4cCI6MjA5MjcxMzI4MX0.5LwkGXOuNQ1TSt0IRcI4hMm-VBJno1mv7rxsHipKeF4';
+
+  async function getCount(table) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+    });
+    const data = await res.json();
+    return Array.isArray(data) ? data.length : 0;
+  }
+
+  async function loadStats() {
+    try {
+      const p = await getCount('products');
+      const c = await getCount('customers');
+      const o = await getCount('orders');
+      document.getElementById('stat-products').textContent = p;
+      document.getElementById('stat-customers').textContent = c;
+      document.getElementById('stat-orders').textContent = o;
+    } catch (e) {
+      console.log('Error loading stats');
+    }
+  }
+
+  loadStats();
+</script>
+
+</body>
+</html>
